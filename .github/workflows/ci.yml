@@ -31,21 +31,18 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y libboost-all-dev doxygen libclang-15-dev
 
-    - name: Install Windows Boost via Chocolatey
+    - name: Install Windows Boost Components via vcpkg
       if: matrix.os == 'windows-latest'
       run: |
-        # Natively installs pre-compiled MSVC 1.86 headers and binary components cleanly
-        choco install boost-msvc-14.3 --version=1.86.0 -y
+        vcpkg install boost-program-options boost-log boost-thread boost-system --triplet=x64-windows
 
     - name: Configure CMake
       shell: bash
       run: |
         if [ "${{ matrix.os }}" = "windows-latest" ]; then
-          # Chocolatey explicitly places the package components under C:/local/boost_1_86_0
           cmake -B build -S . \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
-            -DBOOST_ROOT="C:/local/boost_1_86_0" \
-            -DBoost_NO_BOOST_CMAKE=ON
+            -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
         else
           cmake -B build -S . -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
         fi
