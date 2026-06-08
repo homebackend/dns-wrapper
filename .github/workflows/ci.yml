@@ -4,20 +4,35 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'CMakeLists.txt'
   pull_request:
-    branches: [ "main" ]
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
-  build-and-test-windows:
-    name: run on windows
-    runs-on: windows-latest
+  build-and-test:
+    name: Build & Test (${{ matrix.os }} - ${{ matrix.build_type }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        build_type: [Debug, Release]
+
     steps:
-    - uses: actions/checkout@v2
-    #- uses: ilammy/msvc-dev-cmd@v1.4.1
-    #  with:
-    #    vsversion: 2019
-    - name: Install boost
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Install Linux Dependencies
+      if: startsWith(matrix.os, 'ubuntu')
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libboost-all-dev doxygen libclang-15-dev
+
+    - name: Install Windows Boost
+      if: matrix.os == 'windows-latest'
       uses: MarkusJx/install-boost@v2.4.5
       id: install-boost
       with:
@@ -25,49 +40,122 @@ jobs:
         boost_install_dir: C:\\boost
         platform_version: 2022
         toolset: msvc
-    - run: mkdir build
-    - name: Configure cmake
+
+    - name: Configure CMake
+      shell: bash
       env:
         BOOST_ROOT: ${{ steps.install-boost.outputs.BOOST_ROOT }}
-      run: >
-        cmake -Bbuild -S. 
-        -DCMAKE_CXX_COMPILER=cl
-        -DCMAKE_C_COMPILER=cl
-        -DCMAKE_BUILD_TYPE:STRING="Debug" 
-        -DBoost_INCLUDE_DIR=${{steps.install-boost.outputs.BOOST_ROOT}}/include
-        -DBoost_LIBRARY_DIRS=${{steps.install-boost.outputs.BOOST_ROOT}}/lib
-    - name: Build with MS VC++
-      run: cmake --build build
-    #- name: upload executable
-    #  uses: actions/upload-artifact@v2
-    #  with:
-    #    name: windows
-    #    path: |
-    #      spark.exe
-  build-and-test-linux:
-    name: ${{ matrix.toolchain }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        toolchain:
-          - linux-gcc
-        configuration:
-          - Debug
-        include:
-          - toolchain: linux-gcc
-            os: ubuntu-24.04
-            compiler: gcc
-    steps:
-    - name: Install dev dependencies
-      run: sudo apt-get install -y libboost-all-dev doxygen libclang-15-dev
-    - name: Checkout Code
-      uses: actions/checkout@v2
-    - name: Configure (${{ matrix.configuration }})
-      run: cmake -S . -Bbuild -DCMAKE_BUILD_TYPE=${{ matrix.configuration }}
-    - name: Build with ${{ matrix.compiler }}
-      run: cmake --build build --config ${{ matrix.configuration }}
-    - name: Test
+      run: |
+        if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          cmake -B build -S . \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DBOOST_ROOT="${BOOST_ROOT}" \
+            -DBoost_NO_BOOST_CMAKE=ON
+        else
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        fi
+
+    - name: Build Project
+      run: cmake --build build --config ${{ matrix.build_type }}
+
+    - name: Test Project
       working-directory: build
       env:
         CTEST_OUTPUT_ON_FAILURE: 1
-      run: ctest -C ${{ matrix.configuration }}
+      run: ctest -C ${{ matrix.build_type }}
+
+    - name: Prepare Artifacts (Linux)
+      if: startsWith(matrix.os, 'ubuntu')
+      run: |
+        mkdir -p dist
+        # Copy file and append the build type directly to the filename
+        cp build/dns-wrapper dist/dns-wrapper-linux-${{ matrix.build_type }} || cp build/app/dns-wrapper dist/dns-wrapper-linux-${{ matrix.build_type }} || true
+
+    - name: Prepare Artifacts (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: bash
+      run: |
+        mkdir -p dist
+        # Copy file and append the build type directly to the filename
+        cp build/${{ matrix.build_type }}/dns-wrapper.exe dist/dns-wrapper-windows-${{ matrix.build_type }}.exe || cp build/app/${{ matrix.build_type }}/dns-wrapper.exe dist/dns-wrapper-windows-${{ matrix.build_type }}.exe || true
+
+    - name: Upload Build Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: dns-wrapper-${{ matrix.os }}-${{ matrix.build_type }}
+        path: dist/
+
+  release:
+    name: Parse Tag & Create GitHub Release
+    needs: build-and-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Extract Version String from CMakeLists.txt
+      id: get-version
+      run: |
+        RAW_VERSION=$(sed -n -E 's/.*project\([^)]*VERSION[[:space:]]+([0-9.]+).*/\1/p' CMakeLists.txt | head -n 1)
+        if [ -z "$RAW_VERSION" ]; then
+          echo "❌ Critical Error: Could not extract valid version tokens from CMakeLists.txt!"
+          exit 1
+        fi
+        TAG_NAME="v$RAW_VERSION"
+        if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+          echo "skip_release=true" >> $GITHUB_OUTPUT
+        else
+          echo "skip_release=false" >> $GITHUB_OUTPUT
+          echo "version=$TAG_NAME" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Download Windows Debug Artifact
+      if: steps.get-version.outputs.skip_release == 'false'
+      uses: actions/download-artifact@v4
+      with:
+        name: dns-wrapper-windows-latest-Debug
+        path: ./release-assets
+
+    - name: Download Windows Release Artifact
+      if: steps.get-version.outputs.skip_release == 'false'
+      uses: actions/download-artifact@v4
+      with:
+        name: dns-wrapper-windows-latest-Release
+        path: ./release-assets
+
+    - name: Download Linux Debug Artifact
+      if: steps.get-version.outputs.skip_release == 'false'
+      uses: actions/download-artifact@v4
+      with:
+        name: dns-wrapper-ubuntu-latest-Debug
+        path: ./release-assets
+
+    - name: Download Linux Release Artifact
+      if: steps.get-version.outputs.skip_release == 'false'
+      uses: actions/download-artifact@v4
+      with:
+        name: dns-wrapper-ubuntu-latest-Release
+        path: ./release-assets
+
+    - name: Create GitHub Release and Upload Binaries
+      if: steps.get-version.outputs.skip_release == 'false'
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ steps.get-version.outputs.version }}
+        name: Release ${{ steps.get-version.outputs.version }}
+        body: |
+          Automated Release triggered via CMake version step configuration sync.
+          Commit Hash: ${{ github.sha }}
+        draft: false
+        prerelease: false
+        files: |
+          ./release-assets/dns-wrapper-windows-Debug.exe
+          ./release-assets/dns-wrapper-windows-Release.exe
+          ./release-assets/dns-wrapper-linux-Debug
+          ./release-assets/dns-wrapper-linux-Release
