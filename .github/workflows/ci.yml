@@ -35,6 +35,8 @@ jobs:
       if: matrix.os == 'windows-latest'
       uses: MarkusJx/install-boost@v2.4.5
       id: install-boost
+      env:
+        SEVENZIP_ALLOW_DANGEROUS_LINKS: "1"
       with:
         boost_version: 1.86.0
         boost_install_dir: C:\\boost
