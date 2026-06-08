@@ -20,7 +20,7 @@ cmake_minimum_required(VERSION 3.15)
 # Version numbers are available by including "exampleConfig.h" in
 # the source. See exampleConfig.h.in for some more details.
 set(PROJECT_NAME dns_wrapper)
-project(${PROJECT_NAME} VERSION 0.0.0.1 LANGUAGES C CXX)
+project(${PROJECT_NAME} VERSION 1.0.0.0 LANGUAGES C CXX)
 
 # Options: Things you can set via commandline options to cmake (e.g. -DENABLE_LTO=[ON|OFF])
 option(ENABLE_WARNINGS_SETTINGS "Allow target_set_warnings to add flags and defines.
