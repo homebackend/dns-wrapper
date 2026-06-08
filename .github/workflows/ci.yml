@@ -33,17 +33,15 @@ jobs:
 
     - name: Download and Install Prebuilt Boost Binaries
       if: matrix.os == 'windows-latest'
+      shell: powershell
       run: |
-        # Download the official precompiled MSVC 14.3 (Visual Studio 2022) 64-bit binaries
-        curl -L -o boost_installer.exe "https://sourceforge.net"
-        # Run the installer silently, unpacking everything to C:\local\boost_1_86_0
+        Start-BitsTransfer -Source "https://sourceforge.net" -Destination "boost_installer.exe"
         ./boost_installer.exe /SILENT /VERYSILENT /SP- /SUPPRESSMSGBOXES /DIR="C:\local\boost_1_86_0"
 
     - name: Configure CMake
       shell: bash
       run: |
         if [ "${{ matrix.os }}" = "windows-latest" ]; then
-          # Point strictly to the precompiled directory structure
           cmake -B build -S . \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
             -DBOOST_ROOT="C:/local/boost_1_86_0" \
