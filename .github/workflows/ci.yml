@@ -31,20 +31,20 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y libboost-all-dev doxygen libclang-15-dev
 
-    - name: Download and Install Prebuilt Boost Binaries
+    - name: Install Prebuilt Boost via NuGet
       if: matrix.os == 'windows-latest'
-      shell: powershell
       run: |
-        Start-BitsTransfer -Source "https://sourceforge.net" -Destination "boost_installer.exe"
-        ./boost_installer.exe /SILENT /VERYSILENT /SP- /SUPPRESSMSGBOXES /DIR="C:\local\boost_1_86_0"
+        # Installs the precompiled MSVC 14.3 (VS 2022) binaries immediately into the workspace
+        nuget install boost-vc143 -Version 1.86.0 -OutputDirectory C:\local
 
     - name: Configure CMake
       shell: bash
       run: |
         if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          # NuGet structures the files directly inside the versioned folder
           cmake -B build -S . \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
-            -DBOOST_ROOT="C:/local/boost_1_86_0" \
+            -DBOOST_ROOT="C:/local/boost-vc143.1.86.0" \
             -DBoost_NO_BOOST_CMAKE=ON
         else
           cmake -B build -S . -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
