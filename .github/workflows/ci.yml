@@ -41,11 +41,12 @@ jobs:
       shell: bash
       run: |
         if [ "${{ matrix.os }}" = "windows-latest" ]; then
-          # NuGet structures the files directly inside the versioned folder
+          # 🛡️ Point directly to NuGet's internal nested header and compiled lib directories
           cmake -B build -S . \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
-            -DBOOST_ROOT="C:/local/boost-vc143.1.86.0" \
-            -DBoost_NO_BOOST_CMAKE=ON
+            -DBoost_NO_BOOST_CMAKE=ON \
+            -DBoost_INCLUDE_DIR="C:/local/boost/lib/native/include" \
+            -DBoost_LIBRARY_DIR="C:/local/boost-vc143.1.86.0/lib/native/address-model-64/lib"
         else
           cmake -B build -S . -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
         fi
