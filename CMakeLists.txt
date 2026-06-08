@@ -95,14 +95,16 @@ endif(WIN32)
 ################################################################################
 ## BOOST ##
 ###########
-#set(Boost_USE_STATIC_LIBS OFF)
+set(Boost_NO_BOOST_CMAKE ON)
 set(Boost_USE_MULTITHREADED ON)
-#set(Boost_USE_STATIC_RUNTIME OFF)
-find_package(Boost CONFIG REQUIRED COMPONENTS system program_options log thread log_setup)
-include_directories(${Boost_INCLUDE_DIRS})
-target_link_libraries(${EXEC_NAME} ${Boost_LIBRARIES})
-link_directories(${Boost_LIBRARY_DIRS})
-
+find_package(Boost REQUIRED COMPONENTS program_options log thread log_setup)
+target_link_libraries(${EXEC_NAME} 
+    Boost::headers
+    Boost::program_options 
+    Boost::log 
+    Boost::thread 
+    Boost::log_setup
+)
 #################################################################################
 
 
